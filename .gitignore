@@ -1,0 +1,6 @@
+.env
+DECISIONS.md
+apps/api/.venv/
+apps/api/__pycache__/
+apps/dashboard/node_modules/
+apps/dashboard/.next/
