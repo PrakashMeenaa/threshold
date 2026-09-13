@@ -33,3 +33,8 @@ are not.
 
 ## Testing
 A change without a test in the same commit isn't done.
+
+## Session start
+Read PLAN.md first in any new session — it holds current phase status and the
+per-phase constraints CLAUDE.md doesn't repeat. Orient against it before taking
+any action.
