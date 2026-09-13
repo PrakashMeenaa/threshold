@@ -1,0 +1,15 @@
+name: Sunrise Multi-Speciality
+slug: sunrise-multi-speciality
+phone_number_id: sunrise-main
+languages:
+  - en
+  - hi
+greeting: "PLACEHOLDER: Sunrise Multi-Speciality greeting message — to be finalized in Phase 4."
+escalation_rule: "PLACEHOLDER: Sunrise Multi-Speciality escalation rule — to be finalized in Phase 3."
+departments:
+  - name: Cardiology
+    doctors:
+      - name: Dr. Ananya Rao
+  - name: Gastroenterology
+    doctors:
+      - name: Dr. Vikram Shah

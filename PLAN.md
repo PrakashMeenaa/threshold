@@ -4,7 +4,7 @@ This document serves as the single source of truth for execution state. Order is
 
 ### Status Tracker
 - [x] **Phase 0:** Repo + environment skeleton
-- [ ] **Phase 1:** Data model, RLS, tenant seeding
+- [x] **Phase 1:** Data model, RLS, tenant seeding
 - [ ] **Phase 2:** Webhook contract + signature verification
 - [ ] **Phase 3:** Safety gate
 - [ ] **Phase 4:** Onboarding agent
@@ -38,7 +38,7 @@ This document serves as the single source of truth for execution state. Order is
 
 ## Phase 4 — Onboarding agent
 **Deliverables:** Stateful intent/slot extraction (name → language → consent → department), persisted per clinic+patient.
-**Constraints:** Consent recorded with an explicit timestamp. Duplicate webhook deliveries must not double-advance the state machine.
+**Constraints:** Consent recorded with the exact text shown to the patient plus an explicit timestamp. Duplicate webhook deliveries must not double-advance the state machine.
 
 ## Phase 5 — Appointment agent
 **Deliverables:** Book, reschedule, and cancel operations against real `availability_slots` rows; natural-language date parsing.

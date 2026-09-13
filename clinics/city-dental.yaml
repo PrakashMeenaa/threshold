@@ -1,0 +1,14 @@
+name: City Dental Care
+slug: city-dental-care
+phone_number_id: city-dental-main
+languages:
+  - en
+greeting: "PLACEHOLDER: City Dental Care greeting message — to be finalized in Phase 4."
+escalation_rule: "PLACEHOLDER: City Dental Care escalation rule — to be finalized in Phase 3."
+departments:
+  - name: Orthodontics
+    doctors:
+      - name: Dr. Priya Nair
+  - name: General Dentistry
+    doctors:
+      - name: Dr. Rohan Mehta
