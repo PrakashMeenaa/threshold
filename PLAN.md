@@ -5,7 +5,7 @@ This document serves as the single source of truth for execution state. Order is
 ### Status Tracker
 - [x] **Phase 0:** Repo + environment skeleton
 - [x] **Phase 1:** Data model, RLS, tenant seeding
-- [ ] **Phase 2:** Webhook contract + signature verification
+- [x] **Phase 2:** Webhook contract + signature verification
 - [ ] **Phase 3:** Safety gate
 - [ ] **Phase 4:** Onboarding agent
 - [ ] **Phase 5:** Appointment agent

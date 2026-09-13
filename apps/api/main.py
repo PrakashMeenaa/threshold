@@ -1,25 +1,108 @@
 import hashlib
 import hmac
+import json
 import os
+import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
 
+import asyncpg
 from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-app = FastAPI()
+MAX_BODY_BYTES = 65536
+MIN_SECRET_LENGTH = 32
+
+db_pool: asyncpg.Pool | None = None
+
+
+class MaxBodySizeMiddleware:
+    def __init__(self, app: ASGIApp, max_bytes: int) -> None:
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        total_bytes = 0
+
+        async def limited_receive() -> Message:
+            nonlocal total_bytes
+            message = await receive()
+            if message["type"] == "http.request":
+                total_bytes += len(message.get("body", b""))
+                if total_bytes > self.max_bytes:
+                    raise HTTPException(status_code=413, detail="Payload too large")
+            return message
+
+        await self.app(scope, limited_receive, send)
+
+
+@dataclass
+class DbConfig:
+    host: str
+    port: int
+    database: str
+    password: str
+
+
+def load_db_config() -> DbConfig:
+    password = os.environ.get("THRESHOLD_API_PASSWORD")
+    if not password:
+        raise RuntimeError("THRESHOLD_API_PASSWORD must be set")
+    return DbConfig(
+        host=os.environ.get("PGHOST", "localhost"),
+        port=int(os.environ.get("PGPORT", "5433")),
+        database=os.environ.get("PGDATABASE", "threshold"),
+        password=password,
+    )
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    global db_pool
+    db_config = load_db_config()
+    db_pool = await asyncpg.create_pool(
+        host=db_config.host,
+        port=db_config.port,
+        database=db_config.database,
+        user="threshold_api_user",
+        password=db_config.password,
+        min_size=2,
+        max_size=10,
+        command_timeout=10,
+    )
+    yield
+    await db_pool.close()
+    db_pool = None
+
+
+app = FastAPI(lifespan=lifespan)
+app.add_middleware(MaxBodySizeMiddleware, max_bytes=MAX_BODY_BYTES)
 
 
 class WebhookPayload(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
-    phone_number_id: str
-    from_: str = Field(alias="from")
-    text: str
-    timestamp: int
+    phone_number_id: str = Field(min_length=1, max_length=128)
+    from_: str = Field(alias="from", min_length=1, max_length=32)
+    text: str = Field(min_length=1, max_length=4096)
+    timestamp: int = Field(gt=0)
+
+
+@dataclass
+class WebhookContext:
+    conn: asyncpg.Connection
+    clinic_id: uuid.UUID
 
 
 async def verify_signature(request: Request) -> None:
     secret = os.environ.get("WEBHOOK_SECRET")
-    if not secret:
+    if not secret or len(secret) < MIN_SECRET_LENGTH:
         raise HTTPException(status_code=500, detail="Internal server error")
 
     signature_header = request.headers.get("X-Hub-Signature-256")
@@ -35,6 +118,65 @@ async def verify_signature(request: Request) -> None:
         raise HTTPException(status_code=401, detail="Invalid signature")
 
 
+async def get_webhook_context(request: Request) -> AsyncIterator[WebhookContext]:
+    body = await request.body()
+    try:
+        parsed_body = json.loads(body)
+        phone_number_id = parsed_body["phone_number_id"]
+    except (json.JSONDecodeError, KeyError, TypeError):
+        raise HTTPException(status_code=422, detail="Invalid payload")
+
+    if not isinstance(phone_number_id, str):
+        raise HTTPException(status_code=422, detail="Invalid payload")
+
+    if db_pool is None:
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+    async with db_pool.acquire() as conn:
+        async with conn.transaction():
+            clinic_id: uuid.UUID | None = await conn.fetchval(
+                "SELECT resolve_clinic_by_phone($1)", phone_number_id
+            )
+            if clinic_id is None:
+                raise HTTPException(status_code=404, detail="Unknown clinic")
+
+            await conn.execute(
+                "SELECT set_config('app.current_clinic_id', $1, true)",
+                str(clinic_id),
+            )
+
+            yield WebhookContext(conn=conn, clinic_id=clinic_id)
+
+
+def compute_payload_hash(payload: WebhookPayload) -> str:
+    canonical = "\x1f".join(
+        [payload.phone_number_id, payload.from_, payload.text, str(payload.timestamp)]
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+async def record_if_new(
+    conn: asyncpg.Connection, clinic_id: uuid.UUID, payload_hash: str
+) -> bool:
+    inserted_id: uuid.UUID | None = await conn.fetchval(
+        """
+        INSERT INTO processed_webhooks (clinic_id, payload_hash)
+        VALUES ($1, $2)
+        ON CONFLICT (clinic_id, payload_hash) DO NOTHING
+        RETURNING id
+        """,
+        clinic_id,
+        payload_hash,
+    )
+    return inserted_id is None
+
+
 @app.post("/webhook", dependencies=[Depends(verify_signature)])
-async def receive_webhook(payload: WebhookPayload) -> dict[str, str]:
+async def receive_webhook(
+    payload: WebhookPayload, ctx: WebhookContext = Depends(get_webhook_context)
+) -> dict[str, str]:
+    payload_hash = compute_payload_hash(payload)
+    already_processed = await record_if_new(ctx.conn, ctx.clinic_id, payload_hash)
+    if already_processed:
+        return {"status": "ok", "detail": "already_processed"}
     return {"status": "ok"}
