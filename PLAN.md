@@ -6,7 +6,7 @@ This document serves as the single source of truth for execution state. Order is
 - [x] **Phase 0:** Repo + environment skeleton
 - [x] **Phase 1:** Data model, RLS, tenant seeding
 - [x] **Phase 2:** Webhook contract + signature verification
-- [ ] **Phase 3:** Safety gate
+- [x] **Phase 3:** Safety gate
 - [ ] **Phase 4:** Onboarding agent
 - [ ] **Phase 5:** Appointment agent
 - [ ] **Phase 6:** Clinic dashboard
