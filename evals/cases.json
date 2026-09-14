@@ -1,0 +1,402 @@
+[
+  {
+    "id": 1,
+    "name": "Happy-path booking (English)",
+    "category": "happy_path",
+    "kind": "conversation",
+    "clinic": "sunrise-main",
+    "description": "Full onboarding through a completed booking in English.",
+    "setup": {
+      "slot_department": "Cardiology",
+      "available_slots_days_ahead": [45]
+    },
+    "turns": [
+      {
+        "agent": "onboarding",
+        "text": "Hi, my name is Asha Verma",
+        "mock": {"kind": "name", "name": "Asha Verma"},
+        "expect_next_step": "awaiting_language",
+        "expect_reply_contains": ["language"],
+        "expect_persisted": {"patient_name": "Asha Verma"}
+      },
+      {
+        "agent": "onboarding",
+        "text": "English please",
+        "mock": {"kind": "language", "language": "en"},
+        "expect_next_step": "awaiting_consent",
+        "expect_reply_template": "consent_text",
+        "expect_persisted": {"patient_language": "en"}
+      },
+      {
+        "agent": "onboarding",
+        "text": "Yes",
+        "mock": {"kind": "consent", "decision": "affirmative"},
+        "expect_next_step": "awaiting_department",
+        "expect_reply_template": "department_question",
+        "expect_persisted": {"consent_granted": true}
+      },
+      {
+        "agent": "onboarding",
+        "text": "Cardiology",
+        "mock": {"kind": "department", "department": "Cardiology"},
+        "expect_next_step": "complete",
+        "expect_reply_contains": ["Thanks, Asha Verma"],
+        "expect_persisted": {"department": "Cardiology"}
+      },
+      {
+        "agent": "appointment",
+        "text": "I'd like to book an appointment",
+        "mock": {"kind": "intent", "intent": "book"},
+        "expect_next_step": "awaiting_datetime",
+        "expect_reply_contains": ["date and time"]
+      },
+      {
+        "agent": "appointment",
+        "text": "45 days from now works",
+        "mock": {"kind": "datetime", "days_ahead": 45},
+        "expect_next_step": "awaiting_slot_selection",
+        "expect_reply_contains": ["1."]
+      },
+      {
+        "agent": "appointment",
+        "text": "1",
+        "mock": {"kind": "selection", "option_number": 1},
+        "expect_next_step": "awaiting_intent",
+        "expect_reply_contains": ["booked"],
+        "expect_persisted": {"booked": true}
+      }
+    ],
+    "final_assertions": [
+      {"type": "booked_count_equals", "expected_int": 1}
+    ]
+  },
+  {
+    "id": 2,
+    "name": "Emergency message routes to safety gate",
+    "category": "happy_path",
+    "kind": "gate",
+    "description": "Chest-pain language must trigger the deterministic gate before any agent runs.",
+    "gate": {
+      "text": "I have severe chest pain and pressure in my chest",
+      "expected_category": "chest_pain_cardiac",
+      "expected_action": "escalated"
+    }
+  },
+  {
+    "id": 3,
+    "name": "Medical-advice request routes to safety gate",
+    "category": "happy_path",
+    "kind": "gate",
+    "description": "A request for medical advice must be deflected by the gate, not answered by an agent.",
+    "gate": {
+      "text": "What medicine should I take for my headache?",
+      "expected_category": "medical_advice_request",
+      "expected_action": "deflected"
+    }
+  },
+  {
+    "id": 4,
+    "name": "Abandon onboarding mid-way, clean resume",
+    "category": "happy_path",
+    "kind": "conversation",
+    "clinic": "sunrise-main",
+    "description": "Patient stops after giving their name and resumes later without losing state.",
+    "setup": {},
+    "turns": [
+      {
+        "agent": "onboarding",
+        "text": "This is Meera",
+        "mock": {"kind": "name", "name": "Meera"},
+        "expect_next_step": "awaiting_language",
+        "expect_reply_contains": ["language"],
+        "expect_persisted": {"patient_name": "Meera"}
+      },
+      {
+        "agent": "onboarding",
+        "verify_resume_before": true,
+        "text": "Hindi please, sorry for the wait",
+        "mock": {"kind": "language", "language": "hi"},
+        "expect_next_step": "awaiting_consent",
+        "expect_reply_template": "consent_text",
+        "expect_persisted": {"patient_language": "hi"}
+      }
+    ],
+    "final_assertions": []
+  },
+  {
+    "id": 5,
+    "name": "Relative-date booking (\"Mar 15\" / \"May 2\")",
+    "category": "happy_path",
+    "kind": "conversation",
+    "clinic": "sunrise-main",
+    "description": "Two separate natural-language date phrases each resolve to a real slot search and booking.",
+    "setup": {
+      "preset_patient_department": "Cardiology",
+      "slot_department": "Cardiology",
+      "available_slots_days_ahead": [60, 120]
+    },
+    "turns": [
+      {
+        "agent": "appointment",
+        "text": "I'd like to book",
+        "mock": {"kind": "intent", "intent": "book"},
+        "expect_next_step": "awaiting_datetime"
+      },
+      {
+        "agent": "appointment",
+        "text": "How about Mar 15?",
+        "mock": {"kind": "datetime", "days_ahead": 60},
+        "expect_next_step": "awaiting_slot_selection",
+        "expect_reply_contains": ["1."]
+      },
+      {
+        "agent": "appointment",
+        "text": "1",
+        "mock": {"kind": "selection", "option_number": 1},
+        "expect_next_step": "awaiting_intent",
+        "expect_reply_contains": ["booked"],
+        "expect_persisted": {"booked": true}
+      },
+      {
+        "agent": "appointment",
+        "text": "Actually, I'd like to book another one",
+        "mock": {"kind": "intent", "intent": "book"},
+        "expect_next_step": "awaiting_datetime"
+      },
+      {
+        "agent": "appointment",
+        "text": "Does May 2 work?",
+        "mock": {"kind": "datetime", "days_ahead": 120},
+        "expect_next_step": "awaiting_slot_selection",
+        "expect_reply_contains": ["1."]
+      },
+      {
+        "agent": "appointment",
+        "text": "1",
+        "mock": {"kind": "selection", "option_number": 1},
+        "expect_next_step": "awaiting_intent",
+        "expect_reply_contains": ["booked"],
+        "expect_persisted": {"booked": true}
+      }
+    ],
+    "final_assertions": [
+      {"type": "booked_count_equals", "expected_int": 2}
+    ]
+  },
+  {
+    "id": 6,
+    "name": "Exhausted retries at consent (failure)",
+    "category": "failure",
+    "kind": "conversation",
+    "clinic": "sunrise-main",
+    "description": "Four ambiguous replies to the consent question must cap unclear_count and switch to the bounded fallback reply.",
+    "setup": {
+      "onboarding_state": {"step": "awaiting_consent", "name": "Ravi Kumar", "language": "en", "unclear_count": 0}
+    },
+    "turns": [
+      {
+        "agent": "onboarding",
+        "text": "maybe",
+        "mock": {"kind": "consent", "decision": "unclear"},
+        "expect_next_step": "awaiting_consent",
+        "expect_reply_template": "consent_text"
+      },
+      {
+        "agent": "onboarding",
+        "text": "hmm not sure",
+        "mock": {"kind": "consent", "decision": "unclear"},
+        "expect_next_step": "awaiting_consent",
+        "expect_reply_template": "consent_text"
+      },
+      {
+        "agent": "onboarding",
+        "text": "I don't know",
+        "mock": {"kind": "consent", "decision": "unclear"},
+        "expect_next_step": "awaiting_consent",
+        "expect_reply_equals": "I still couldn't tell if that's a yes or no — please reply exactly YES or NO."
+      },
+      {
+        "agent": "onboarding",
+        "text": "what?",
+        "mock": {"kind": "consent", "decision": "unclear"},
+        "expect_next_step": "awaiting_consent",
+        "expect_reply_equals": "I still couldn't tell if that's a yes or no — please reply exactly YES or NO."
+      }
+    ],
+    "final_assertions": [
+      {"type": "onboarding_unclear_count_equals", "expected_int": 3},
+      {"type": "consent_row_absent"}
+    ]
+  },
+  {
+    "id": 7,
+    "name": "Explicit consent rejection (edge)",
+    "category": "edge",
+    "kind": "conversation",
+    "clinic": "sunrise-main",
+    "description": "A patient who replies NO to consent must have granted=false recorded and must not advance.",
+    "setup": {
+      "onboarding_state": {"step": "awaiting_consent", "name": "Deepak Joshi", "language": "en", "unclear_count": 0}
+    },
+    "turns": [
+      {
+        "agent": "onboarding",
+        "text": "No thanks",
+        "mock": {"kind": "consent", "decision": "decline"},
+        "expect_next_step": "awaiting_consent",
+        "expect_reply_equals": "No problem — reply anytime you'd like to continue.",
+        "expect_persisted": {"consent_granted": false}
+      }
+    ],
+    "final_assertions": [
+      {"type": "consent_granted_equals", "expected_bool": false}
+    ]
+  },
+  {
+    "id": 8,
+    "name": "Cross-tenant department request (failure)",
+    "category": "failure",
+    "kind": "conversation",
+    "clinic": "city-dental-main",
+    "description": "A department name that belongs to a different clinic must be rejected by the Python membership check even if extraction returns it verbatim.",
+    "setup": {
+      "onboarding_state": {"step": "awaiting_department", "name": "Sunita Rao", "language": "en", "unclear_count": 0}
+    },
+    "turns": [
+      {
+        "agent": "onboarding",
+        "text": "Cardiology please",
+        "mock": {"kind": "department", "department": "Cardiology"},
+        "expect_next_step": "awaiting_department",
+        "expect_reply_template": "department_question"
+      }
+    ],
+    "final_assertions": [
+      {"type": "patient_department_null"}
+    ]
+  },
+  {
+    "id": 9,
+    "name": "Ambiguous cancel with multiple appointments (edge)",
+    "category": "edge",
+    "kind": "conversation",
+    "clinic": "sunrise-main",
+    "description": "A patient with three active appointments who says 'cancel it' must get a disambiguation list, not a guess.",
+    "setup": {
+      "preset_patient_department": "Cardiology",
+      "slot_department": "Cardiology",
+      "booked_appointments_days_ahead": [10, 20, 30]
+    },
+    "turns": [
+      {
+        "agent": "appointment",
+        "text": "Cancel it",
+        "mock": {"kind": "intent", "intent": "cancel"},
+        "expect_next_step": "awaiting_appointment_selection",
+        "expect_reply_contains": ["multiple upcoming appointments", "1.", "2.", "3."]
+      }
+    ],
+    "final_assertions": [
+      {"type": "candidate_ids_count_equals", "expected_int": 3}
+    ]
+  },
+  {
+    "id": 10,
+    "name": "Out-of-bounds requested time (failure)",
+    "category": "failure",
+    "kind": "conversation",
+    "clinic": "sunrise-main",
+    "description": "A nonsensical requested time ('Sunday at 3 AM') must still resolve to the nearest real available slots, not an error.",
+    "setup": {
+      "preset_patient_department": "Cardiology",
+      "slot_department": "Cardiology",
+      "available_slots_days_ahead": [5, 15, 25]
+    },
+    "turns": [
+      {
+        "agent": "appointment",
+        "text": "I'd like to book",
+        "mock": {"kind": "intent", "intent": "book"},
+        "expect_next_step": "awaiting_datetime"
+      },
+      {
+        "agent": "appointment",
+        "text": "How about Sunday at 3 AM?",
+        "mock": {"kind": "datetime", "days_ahead": 5.05},
+        "expect_next_step": "awaiting_slot_selection",
+        "expect_reply_contains": ["Here are the closest available slots", "1.", "2.", "3."]
+      }
+    ],
+    "final_assertions": [
+      {"type": "candidate_ids_count_equals", "expected_int": 3}
+    ]
+  },
+  {
+    "id": 11,
+    "name": "Hindi-language onboarding (edge)",
+    "category": "edge",
+    "kind": "conversation",
+    "clinic": "sunrise-main",
+    "description": "Hindi patient messages must extract into the same English Pydantic schema and advance state normally.",
+    "setup": {},
+    "turns": [
+      {
+        "agent": "onboarding",
+        "text": "Mera naam Prakash hai",
+        "mock": {"kind": "name", "name": "Prakash"},
+        "expect_next_step": "awaiting_language",
+        "expect_reply_contains": ["language"],
+        "expect_persisted": {"patient_name": "Prakash"}
+      },
+      {
+        "agent": "onboarding",
+        "text": "Hindi mein baat karenge",
+        "mock": {"kind": "language", "language": "hi"},
+        "expect_next_step": "awaiting_consent",
+        "expect_reply_template": "consent_text",
+        "expect_persisted": {"patient_language": "hi"}
+      }
+    ],
+    "final_assertions": []
+  },
+  {
+    "id": 12,
+    "name": "Booking race loss (edge)",
+    "category": "edge",
+    "kind": "conversation",
+    "clinic": "sunrise-main",
+    "description": "The chosen slot is taken by another booking between selection and confirmation; the agent must fail gracefully without penalizing the patient.",
+    "setup": {
+      "preset_patient_department": "Cardiology",
+      "slot_department": "Cardiology",
+      "available_slots_days_ahead": [45]
+    },
+    "turns": [
+      {
+        "agent": "appointment",
+        "text": "Book me an appointment",
+        "mock": {"kind": "intent", "intent": "book"},
+        "expect_next_step": "awaiting_datetime"
+      },
+      {
+        "agent": "appointment",
+        "text": "45 days out",
+        "mock": {"kind": "datetime", "days_ahead": 45},
+        "expect_next_step": "awaiting_slot_selection",
+        "expect_reply_contains": ["1."]
+      },
+      {
+        "agent": "appointment",
+        "mark_candidates_booked_before": true,
+        "text": "1",
+        "mock": {"kind": "selection", "option_number": 1},
+        "expect_next_step": "awaiting_slot_selection",
+        "expect_reply_equals": "Sorry, that slot was just taken — please pick another from the list."
+      }
+    ],
+    "final_assertions": [
+      {"type": "appointment_unclear_count_equals", "expected_int": 0},
+      {"type": "total_appointments_count_equals", "expected_int": 0}
+    ]
+  }
+]

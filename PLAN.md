@@ -10,7 +10,7 @@ This document serves as the single source of truth for execution state. Order is
 - [x] **Phase 4:** Onboarding agent
 - [x] **Phase 5:** Appointment agent
 - [x] **Phase 6:** Clinic dashboard
-- [ ] **Phase 7:** Evals + replay harness
+- [x] **Phase 7:** Evals + replay harness
 - [ ] **Phase 8:** Docker Compose, CI, README, secret scanning
 - [ ] **Phase 9:** Writeups + log curation (Ongoing)
 
@@ -49,7 +49,9 @@ This document serves as the single source of truth for execution state. Order is
 **Constraints:** Must demonstrate IDOR protection at the API layer, in addition to RLS at the database layer.
 
 ## Phase 7 — Evals + replay harness
-**Deliverables:** 12 total golden-conversation cases — the 5 seeded in the brief, plus 7 authored for this project, at least 4 of which are failure/edge cases rather than additional happy paths — plus a replay harness that runs the full set against the live app and prints a pass/fail report.
+**State:** Completed.
+**Deliverables:** `evals/cases.json` — 12 golden-conversation cases (5 seeded from the brief: happy-path booking, emergency gate, medical-advice gate, abandon/resume, relative-date booking; 7 authored here, 4 of them failure cases: exhausted consent retries, cross-tenant department rejection, out-of-bounds requested time, booking race loss — plus 3 edge cases: explicit consent decline, ambiguous cancel disambiguation, Hindi-language extraction). `evals/run_evals.py` — a standalone async CLI harness that drives `advance_onboarding`/`advance_appointment` directly against a real (transaction-rolled-back) Postgres connection using `MockSlotExtractor`/`MockAppointmentExtractor` in place of the Anthropic client, so it runs fully offline with no LLM calls, and the deterministic `safety_gate.evaluate` directly for the two gate cases. Prints a pass/fail report; verified 12/12 passing with zero DB residue (row counts diffed before/after).
+**Constraints:** Each case's DB setup/teardown is isolated in its own transaction that is always rolled back, so repeated runs never accumulate rows or affect the seeded clinic data. `_run_case` catches any unexpected exception per case (not just expected-vs-actual mismatches) and reports it as a `FAIL`, so one broken case can't take down the report for the other 11 — verified with a deliberately-broken 13th case, then reverted. See `DECISIONS.md` (Step 7.1/7.2) and `docs/architecture.md` for the full design and audit trail.
 
 ## Phase 8 — Docker Compose, CI, README, secret scanning
 **Deliverables:** CI pipeline (tests, tenant-isolation proof, and a `gitleaks` scan on every push); a `docker-compose`-based deploy that a stranger can run from the README alone; finished `README.md`.
