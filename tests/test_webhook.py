@@ -5,6 +5,7 @@ import time
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from datetime import datetime
 
 import asyncpg
 import main
@@ -13,6 +14,12 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from main import MAX_BODY_BYTES, app, load_db_config
+from appointment_agent import (
+    ConfirmationExtraction,
+    DateTimeExtraction,
+    IntentExtraction,
+    SelectionExtraction,
+)
 from onboarding_agent import (
     ConsentExtraction,
     DepartmentExtraction,
@@ -70,6 +77,24 @@ async def count_gate_log_rows(conn: asyncpg.Connection, category: str) -> int:
         "SELECT count(*) FROM gate_log WHERE category = $1", category
     )
     return count
+
+
+@dataclass
+class FakeAppointmentExtractor:
+    intent_result: IntentExtraction | None = None
+
+    async def extract_intent(self, text: str) -> IntentExtraction:
+        assert self.intent_result is not None
+        return self.intent_result
+
+    async def extract_datetime(self, text: str, reference_now: datetime) -> DateTimeExtraction:
+        raise NotImplementedError
+
+    async def extract_selection(self, text: str, option_count: int) -> SelectionExtraction:
+        raise NotImplementedError
+
+    async def extract_confirmation(self, text: str) -> ConfirmationExtraction:
+        raise NotImplementedError
 
 
 @dataclass
@@ -230,9 +255,11 @@ async def test_onboarding_full_flow_through_webhook(
     fourth = await send_onboarding_message(client, from_number, "cardiology")
     assert "Meera Iyer" in fourth["reply"]
 
-    main.slot_extractor = SequencedSlotExtractor()
+    main.appointment_extractor = FakeAppointmentExtractor(
+        intent_result=IntentExtraction(intent="unclear")
+    )
     fifth = await send_onboarding_message(client, from_number, "hello again")
-    assert fifth["reply"] == "You're already registered — appointment booking is coming soon!"
+    assert fifth["reply"] == "Would you like to book, reschedule, or cancel an appointment?"
 
 
 @pytest.mark.asyncio

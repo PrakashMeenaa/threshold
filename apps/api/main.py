@@ -14,9 +14,16 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from appointment_agent import (
+    AnthropicAppointmentExtractor,
+    AppointmentExtractor,
+    advance_appointment,
+    load_appointment_state,
+)
 from onboarding_agent import (
     AnthropicSlotExtractor,
     ClinicRuntimeConfig,
+    OnboardingStep,
     SlotExtractor,
     advance_onboarding,
     load_clinic_configs,
@@ -30,6 +37,7 @@ CLINICS_DIR = Path(__file__).resolve().parent.parent.parent / "clinics"
 
 db_pool: asyncpg.Pool | None = None
 slot_extractor: SlotExtractor | None = None
+appointment_extractor: AppointmentExtractor | None = None
 clinic_configs: dict[str, ClinicRuntimeConfig] = {}
 
 
@@ -79,7 +87,7 @@ def load_db_config() -> DbConfig:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    global db_pool, slot_extractor, clinic_configs
+    global db_pool, slot_extractor, appointment_extractor, clinic_configs
     db_config = load_db_config()
     db_pool = await asyncpg.create_pool(
         host=db_config.host,
@@ -94,13 +102,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     if not os.environ.get("ANTHROPIC_API_KEY"):
         raise RuntimeError("ANTHROPIC_API_KEY must be set")
-    slot_extractor = AnthropicSlotExtractor(anthropic.AsyncAnthropic())
+    anthropic_client = anthropic.AsyncAnthropic()
+    slot_extractor = AnthropicSlotExtractor(anthropic_client)
+    appointment_extractor = AnthropicAppointmentExtractor(anthropic_client)
     clinic_configs = load_clinic_configs(CLINICS_DIR)
 
     yield
     await db_pool.close()
     db_pool = None
     slot_extractor = None
+    appointment_extractor = None
     clinic_configs = {}
 
 
@@ -235,7 +246,7 @@ async def receive_webhook(
         await log_gate_event(ctx.conn, ctx.clinic_id, gate_result.category)
         return {"reply": gate_result.reply_text}
 
-    if slot_extractor is None:
+    if slot_extractor is None or appointment_extractor is None:
         raise HTTPException(status_code=500, detail="Internal server error")
     clinic_config = clinic_configs.get(payload.phone_number_id)
     if clinic_config is None:
@@ -243,17 +254,29 @@ async def receive_webhook(
 
     patient_id = await upsert_patient(ctx.conn, ctx.clinic_id, payload.from_)
     loaded = await load_onboarding_state(ctx.conn, ctx.clinic_id, patient_id)
-    turn_result = await advance_onboarding(
+
+    if loaded.state.step != OnboardingStep.COMPLETE:
+        turn_result = await advance_onboarding(
+            ctx.conn,
+            ctx.clinic_id,
+            patient_id,
+            loaded.state,
+            payload.text,
+            clinic_config,
+            slot_extractor,
+        )
+        reply_text = turn_result.reply_text
+        if loaded.is_new:
+            reply_text = f"{clinic_config.greeting}\n\n{reply_text}"
+        return {"reply": reply_text}
+
+    appointment_state = await load_appointment_state(ctx.conn, ctx.clinic_id, patient_id)
+    appointment_result = await advance_appointment(
         ctx.conn,
         ctx.clinic_id,
         patient_id,
-        loaded.state,
+        appointment_state,
         payload.text,
-        clinic_config,
-        slot_extractor,
+        appointment_extractor,
     )
-
-    reply_text = turn_result.reply_text
-    if loaded.is_new:
-        reply_text = f"{clinic_config.greeting}\n\n{reply_text}"
-    return {"reply": reply_text}
+    return {"reply": appointment_result.reply_text}

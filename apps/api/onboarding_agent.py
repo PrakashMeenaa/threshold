@@ -466,6 +466,18 @@ async def advance_onboarding(
             return TurnResult(state.step, EXTRACTION_FAILURE_REPLY, PersistedChanges())
 
         matched_department = _match_option(extraction.department, departments)
+        if matched_department is not None:
+            await conn.execute(
+                """
+                UPDATE patients SET department_id = (
+                    SELECT id FROM departments WHERE clinic_id = $1 AND name = $2
+                )
+                WHERE id = $3
+                """,
+                clinic_id,
+                matched_department,
+                patient_id,
+            )
         if matched_department is None:
             return await _handle_unclear(
                 conn,

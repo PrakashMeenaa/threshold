@@ -82,12 +82,13 @@ async def upsert_clinic(conn: asyncpg.Connection, clinic: ClinicConfig) -> uuid.
     )
     await conn.execute(
         """
-        INSERT INTO clinics (id, name, slug, whatsapp_phone_number_id)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO clinics (id, name, slug, whatsapp_phone_number_id, timezone)
+        VALUES ($1, $2, $3, $4, 'Asia/Kolkata')
         ON CONFLICT (id) DO UPDATE SET
             name = EXCLUDED.name,
             slug = EXCLUDED.slug,
-            whatsapp_phone_number_id = EXCLUDED.whatsapp_phone_number_id
+            whatsapp_phone_number_id = EXCLUDED.whatsapp_phone_number_id,
+            timezone = EXCLUDED.timezone
         """,
         clinic_id,
         clinic.name,
