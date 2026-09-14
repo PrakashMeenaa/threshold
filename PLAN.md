@@ -9,7 +9,7 @@ This document serves as the single source of truth for execution state. Order is
 - [x] **Phase 3:** Safety gate
 - [x] **Phase 4:** Onboarding agent
 - [x] **Phase 5:** Appointment agent
-- [ ] **Phase 6:** Clinic dashboard
+- [x] **Phase 6:** Clinic dashboard
 - [ ] **Phase 7:** Evals + replay harness
 - [ ] **Phase 8:** Docker Compose, CI, README, secret scanning
 - [ ] **Phase 9:** Writeups + log curation (Ongoing)

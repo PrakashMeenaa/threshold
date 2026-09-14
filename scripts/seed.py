@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import asyncpg
+import bcrypt
 import yaml
 from pydantic import BaseModel, ConfigDict
 
@@ -35,6 +36,7 @@ class ClinicConfig(BaseModel):
     greeting: str
     escalation_rule: str
     consent_text: str
+    staff_email: str
     departments: list[DepartmentConfig]
 
 
@@ -62,6 +64,13 @@ def load_db_config() -> DbConfig:
         database=os.environ.get("PGDATABASE", "threshold"),
         password=password,
     )
+
+
+def load_staff_password_hash() -> str:
+    password = os.environ.get("STAFF_SEED_PASSWORD")
+    if not password:
+        raise RuntimeError("STAFF_SEED_PASSWORD must be set")
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def future_slot_bounds(index: int) -> tuple[datetime, datetime]:
@@ -162,7 +171,24 @@ async def seed_availability_slots(
         )
 
 
-async def seed_clinic(conn: asyncpg.Connection, clinic: ClinicConfig) -> None:
+async def upsert_staff_user(
+    conn: asyncpg.Connection, clinic_id: uuid.UUID, email: str, password_hash: str
+) -> None:
+    await conn.execute(
+        """
+        INSERT INTO staff_users (clinic_id, email, password_hash)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (clinic_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash
+        """,
+        clinic_id,
+        email,
+        password_hash,
+    )
+
+
+async def seed_clinic(
+    conn: asyncpg.Connection, clinic: ClinicConfig, staff_password_hash: str
+) -> None:
     async with conn.transaction():
         clinic_id = await upsert_clinic(conn, clinic)
         for department in clinic.departments:
@@ -170,10 +196,14 @@ async def seed_clinic(conn: asyncpg.Connection, clinic: ClinicConfig) -> None:
             for doctor in department.doctors:
                 doctor_id = await upsert_doctor(conn, clinic_id, department_id, doctor)
                 await seed_availability_slots(conn, clinic_id, doctor_id)
+        await upsert_staff_user(
+            conn, clinic_id, clinic.staff_email.strip().lower(), staff_password_hash
+        )
 
 
 async def main() -> None:
     db_config = load_db_config()
+    staff_password_hash = load_staff_password_hash()
     conn = await asyncpg.connect(
         host=db_config.host,
         port=db_config.port,
@@ -184,8 +214,8 @@ async def main() -> None:
     try:
         for path in sorted(CLINICS_DIR.glob("*.yaml")):
             clinic = load_clinic_config(path)
-            await seed_clinic(conn, clinic)
-            print(f"Seeded {clinic.name}")
+            await seed_clinic(conn, clinic, staff_password_hash)
+            print(f"Seeded {clinic.name} (staff: {clinic.staff_email})")
     finally:
         await conn.close()
 

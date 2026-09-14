@@ -7,6 +7,7 @@ languages:
 greeting: "PLACEHOLDER: Sunrise Multi-Speciality greeting message — to be finalized in Phase 4."
 escalation_rule: "PLACEHOLDER: Sunrise Multi-Speciality escalation rule — to be finalized in Phase 3."
 consent_text: "Sunrise Multi-Speciality would like to store your name, preferred language, and the department you're interested in so our staff can prepare for your visit and contact you about your appointment. Reply YES to consent and continue, or NO if you'd prefer not to."
+staff_email: staff@sunrise-multi-speciality.example
 departments:
   - name: Cardiology
     doctors:
