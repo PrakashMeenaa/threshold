@@ -12,7 +12,9 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-MAX_BODY_BYTES = 65536
+from safety_gate import action_for_category, evaluate
+
+MAX_BODY_BYTES = 8192
 MIN_SECRET_LENGTH = 32
 
 db_pool: asyncpg.Pool | None = None
@@ -171,6 +173,15 @@ async def record_if_new(
     return inserted_id is None
 
 
+async def log_gate_event(conn: asyncpg.Connection, clinic_id: uuid.UUID, category: str) -> None:
+    await conn.execute(
+        "INSERT INTO gate_log (clinic_id, category, action) VALUES ($1, $2, $3)",
+        clinic_id,
+        category,
+        action_for_category(category),
+    )
+
+
 @app.post("/webhook", dependencies=[Depends(verify_signature)])
 async def receive_webhook(
     payload: WebhookPayload, ctx: WebhookContext = Depends(get_webhook_context)
@@ -179,4 +190,12 @@ async def receive_webhook(
     already_processed = await record_if_new(ctx.conn, ctx.clinic_id, payload_hash)
     if already_processed:
         return {"status": "ok", "detail": "already_processed"}
+
+    gate_result = evaluate(payload.text)
+    if gate_result.triggered:
+        assert gate_result.category is not None
+        assert gate_result.reply_text is not None
+        await log_gate_event(ctx.conn, ctx.clinic_id, gate_result.category)
+        return {"reply": gate_result.reply_text}
+
     return {"status": "ok"}
