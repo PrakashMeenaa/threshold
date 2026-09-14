@@ -34,6 +34,7 @@ class ClinicConfig(BaseModel):
     languages: list[str]
     greeting: str
     escalation_rule: str
+    consent_text: str
     departments: list[DepartmentConfig]
 
 

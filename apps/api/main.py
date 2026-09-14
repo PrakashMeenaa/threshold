@@ -6,18 +6,31 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from pathlib import Path
 
+import anthropic
 import asyncpg
 from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from onboarding_agent import (
+    AnthropicSlotExtractor,
+    ClinicRuntimeConfig,
+    SlotExtractor,
+    advance_onboarding,
+    load_clinic_configs,
+    load_onboarding_state,
+)
 from safety_gate import action_for_category, evaluate
 
 MAX_BODY_BYTES = 8192
 MIN_SECRET_LENGTH = 32
+CLINICS_DIR = Path(__file__).resolve().parent.parent.parent / "clinics"
 
 db_pool: asyncpg.Pool | None = None
+slot_extractor: SlotExtractor | None = None
+clinic_configs: dict[str, ClinicRuntimeConfig] = {}
 
 
 class MaxBodySizeMiddleware:
@@ -66,7 +79,7 @@ def load_db_config() -> DbConfig:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    global db_pool
+    global db_pool, slot_extractor, clinic_configs
     db_config = load_db_config()
     db_pool = await asyncpg.create_pool(
         host=db_config.host,
@@ -78,9 +91,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         max_size=10,
         command_timeout=10,
     )
+
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        raise RuntimeError("ANTHROPIC_API_KEY must be set")
+    slot_extractor = AnthropicSlotExtractor(anthropic.AsyncAnthropic())
+    clinic_configs = load_clinic_configs(CLINICS_DIR)
+
     yield
     await db_pool.close()
     db_pool = None
+    slot_extractor = None
+    clinic_configs = {}
 
 
 app = FastAPI(lifespan=lifespan)
@@ -182,6 +203,22 @@ async def log_gate_event(conn: asyncpg.Connection, clinic_id: uuid.UUID, categor
     )
 
 
+async def upsert_patient(
+    conn: asyncpg.Connection, clinic_id: uuid.UUID, whatsapp_id: str
+) -> uuid.UUID:
+    patient_id: uuid.UUID = await conn.fetchval(
+        """
+        INSERT INTO patients (clinic_id, whatsapp_id)
+        VALUES ($1, $2)
+        ON CONFLICT (clinic_id, whatsapp_id) DO UPDATE SET whatsapp_id = EXCLUDED.whatsapp_id
+        RETURNING id
+        """,
+        clinic_id,
+        whatsapp_id,
+    )
+    return patient_id
+
+
 @app.post("/webhook", dependencies=[Depends(verify_signature)])
 async def receive_webhook(
     payload: WebhookPayload, ctx: WebhookContext = Depends(get_webhook_context)
@@ -198,4 +235,25 @@ async def receive_webhook(
         await log_gate_event(ctx.conn, ctx.clinic_id, gate_result.category)
         return {"reply": gate_result.reply_text}
 
-    return {"status": "ok"}
+    if slot_extractor is None:
+        raise HTTPException(status_code=500, detail="Internal server error")
+    clinic_config = clinic_configs.get(payload.phone_number_id)
+    if clinic_config is None:
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+    patient_id = await upsert_patient(ctx.conn, ctx.clinic_id, payload.from_)
+    loaded = await load_onboarding_state(ctx.conn, ctx.clinic_id, patient_id)
+    turn_result = await advance_onboarding(
+        ctx.conn,
+        ctx.clinic_id,
+        patient_id,
+        loaded.state,
+        payload.text,
+        clinic_config,
+        slot_extractor,
+    )
+
+    reply_text = turn_result.reply_text
+    if loaded.is_new:
+        reply_text = f"{clinic_config.greeting}\n\n{reply_text}"
+    return {"reply": reply_text}

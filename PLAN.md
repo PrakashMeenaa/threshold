@@ -7,7 +7,7 @@ This document serves as the single source of truth for execution state. Order is
 - [x] **Phase 1:** Data model, RLS, tenant seeding
 - [x] **Phase 2:** Webhook contract + signature verification
 - [x] **Phase 3:** Safety gate
-- [ ] **Phase 4:** Onboarding agent
+- [x] **Phase 4:** Onboarding agent
 - [ ] **Phase 5:** Appointment agent
 - [ ] **Phase 6:** Clinic dashboard
 - [ ] **Phase 7:** Evals + replay harness

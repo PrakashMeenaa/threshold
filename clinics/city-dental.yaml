@@ -5,6 +5,7 @@ languages:
   - en
 greeting: "PLACEHOLDER: City Dental Care greeting message — to be finalized in Phase 4."
 escalation_rule: "PLACEHOLDER: City Dental Care escalation rule — to be finalized in Phase 3."
+consent_text: "City Dental Care would like to store your name, preferred language, and the department you're interested in so our staff can prepare for your visit and contact you about your appointment. Reply YES to consent and continue, or NO if you'd prefer not to."
 departments:
   - name: Orthodontics
     doctors:

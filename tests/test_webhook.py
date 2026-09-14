@@ -4,13 +4,22 @@ import json
 import time
 import uuid
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 
 import asyncpg
+import main
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from main import MAX_BODY_BYTES, app, load_db_config
+from onboarding_agent import (
+    ConsentExtraction,
+    DepartmentExtraction,
+    LanguageExtraction,
+    NameExtraction,
+    load_clinic_configs,
+)
 from safety_gate import EMERGENCY_REPLY, MEDICAL_ADVICE_REPLY
 
 WEBHOOK_SECRET = "test-webhook-secret-" + "x" * 20
@@ -63,13 +72,57 @@ async def count_gate_log_rows(conn: asyncpg.Connection, category: str) -> int:
     return count
 
 
+@dataclass
+class SequencedSlotExtractor:
+    name_result: NameExtraction | None = None
+    language_result: LanguageExtraction | None = None
+    consent_result: ConsentExtraction | None = None
+    department_result: DepartmentExtraction | None = None
+
+    async def extract_name(self, text: str) -> NameExtraction:
+        assert self.name_result is not None
+        return self.name_result
+
+    async def extract_language(
+        self, text: str, available_languages: list[str]
+    ) -> LanguageExtraction:
+        assert self.language_result is not None
+        return self.language_result
+
+    async def extract_consent(self, text: str) -> ConsentExtraction:
+        assert self.consent_result is not None
+        return self.consent_result
+
+    async def extract_department(
+        self, text: str, available_departments: list[str]
+    ) -> DepartmentExtraction:
+        assert self.department_result is not None
+        return self.department_result
+
+
+async def send_onboarding_message(
+    client: AsyncClient, from_number: str, text: str
+) -> dict[str, str]:
+    body = build_payload_body("sunrise-main", from_number, text, int(time.time()))
+    headers = {
+        "Content-Type": "application/json",
+        "X-Hub-Signature-256": signature_header(WEBHOOK_SECRET, body),
+    }
+    response = await client.post("/webhook", content=body, headers=headers)
+    assert response.status_code == 200
+    result: dict[str, str] = response.json()
+    return result
+
+
 @pytest.mark.asyncio
 async def test_valid_signature_returns_ok(
     client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("WEBHOOK_SECRET", WEBHOOK_SECRET)
+    main.slot_extractor = SequencedSlotExtractor(name_result=NameExtraction(name="Test Patient"))
+    from_number = f"+1{uuid.uuid4().int % 10**10}"
     body = build_payload_body(
-        "sunrise-main", "+10000000000", f"hello-{uuid.uuid4()}", int(time.time())
+        "sunrise-main", from_number, f"hello-{uuid.uuid4()}", int(time.time())
     )
     headers = {
         "Content-Type": "application/json",
@@ -77,7 +130,7 @@ async def test_valid_signature_returns_ok(
     }
     response = await client.post("/webhook", content=body, headers=headers)
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert "reply" in response.json()
 
 
 @pytest.mark.asyncio
@@ -127,9 +180,11 @@ async def test_duplicate_payload_is_blocked(
     client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("WEBHOOK_SECRET", WEBHOOK_SECRET)
+    main.slot_extractor = SequencedSlotExtractor(name_result=NameExtraction(name="Test Patient"))
+    from_number = f"+1{uuid.uuid4().int % 10**10}"
     body = build_payload_body(
         "sunrise-main",
-        "+10000000001",
+        from_number,
         f"duplicate-check-{uuid.uuid4()}",
         int(time.time()),
     )
@@ -140,11 +195,44 @@ async def test_duplicate_payload_is_blocked(
 
     first_response = await client.post("/webhook", content=body, headers=headers)
     assert first_response.status_code == 200
-    assert first_response.json() == {"status": "ok"}
+    assert "reply" in first_response.json()
 
     second_response = await client.post("/webhook", content=body, headers=headers)
     assert second_response.status_code == 200
     assert second_response.json() == {"status": "ok", "detail": "already_processed"}
+
+
+@pytest.mark.asyncio
+async def test_onboarding_full_flow_through_webhook(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("WEBHOOK_SECRET", WEBHOOK_SECRET)
+    from_number = f"+1{uuid.uuid4().int % 10**10}"
+    clinic_config = load_clinic_configs(main.CLINICS_DIR)["sunrise-main"]
+
+    main.slot_extractor = SequencedSlotExtractor(name_result=NameExtraction(name="Meera Iyer"))
+    first = await send_onboarding_message(client, from_number, "hi there")
+    assert first["reply"].startswith(clinic_config.greeting)
+
+    main.slot_extractor = SequencedSlotExtractor(language_result=LanguageExtraction(language="en"))
+    second = await send_onboarding_message(client, from_number, "english please")
+    assert second["reply"] == clinic_config.consent_text
+
+    main.slot_extractor = SequencedSlotExtractor(
+        consent_result=ConsentExtraction(decision="affirmative")
+    )
+    third = await send_onboarding_message(client, from_number, "yes")
+    assert "department" in third["reply"].lower()
+
+    main.slot_extractor = SequencedSlotExtractor(
+        department_result=DepartmentExtraction(department="Cardiology")
+    )
+    fourth = await send_onboarding_message(client, from_number, "cardiology")
+    assert "Meera Iyer" in fourth["reply"]
+
+    main.slot_extractor = SequencedSlotExtractor()
+    fifth = await send_onboarding_message(client, from_number, "hello again")
+    assert fifth["reply"] == "You're already registered — appointment booking is coming soon!"
 
 
 @pytest.mark.asyncio
