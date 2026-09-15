@@ -1,6 +1,6 @@
 # Agent Log Index
 
-Six moments from the raw session transcripts that are worth a reviewer's time
+Seven moments from the raw session transcripts that are worth a reviewer's time
 beyond what `DECISIONS.md` already narrates. `DECISIONS.md` is a private
 working document — gitignored by design (see its own Step 0.1), not part of
 this repository — that holds the synthesized account of *what was decided and
@@ -179,3 +179,55 @@ this one was caught by re-deriving the safety property the module exists to
 guarantee and checking the new code against it directly — the review step
 that had been explicitly asked for, working as intended on the one part of
 this system where a missed regression would have mattered most.
+
+## 7. A gap only a real GitHub Actions run could have caught — and did, by the user, not the agent
+
+**Line ~5123.** Reported directly: "I just caught and fixed a bug in our CI
+pipeline that was missed during the earlier phases. Our api-tests job in
+.github/workflows/ci.yml was failing because main.py strictly requires
+ANTHROPIC_API_KEY to be present to boot, but GitHub Actions didn't have
+access to our local .env file. I fixed it by explicitly passing
+ANTHROPIC_API_KEY: sk-ant-placeholder-for-ci in the workflow's env block."
+The fix itself was already applied to the file directly (not through this
+session's tools) by the time it was reported.
+
+This one is included even though the agent didn't do the catching, because
+it's the cleanest example in the whole project of exactly the boundary
+Phase 8's own writeup (`DECISIONS.md`, Step 8.1) named honestly at the time:
+"I could only verify each step locally, not GitHub's own runner environment
+end-to-end." Every local run of the test suite throughout this entire
+project — every single one — was executed in a shell that already had
+`.env` sourced with some value for `ANTHROPIC_API_KEY`, because `main.py`'s
+startup lifespan (`if not os.environ.get("ANTHROPIC_API_KEY"): raise
+RuntimeError(...)`) makes that unavoidable for local development. The gap
+only existed in the CI workflow file's own declared environment, which
+`tests/test_webhook.py`'s `client` fixture exercises by booting the real app
+through that same lifespan — and the only way to find a gap that exists
+exclusively in "what GitHub's hosted runner has that my machine doesn't" is
+to actually run it there. No amount of rereading the YAML locally would have
+surfaced it, and none of this session's local reproductions of the CI steps
+did.
+
+Before writing this up, the claim was checked rather than taken at face
+value: `git show HEAD:.github/workflows/ci.yml` confirmed the previously
+committed `api-tests` env block genuinely never set `ANTHROPIC_API_KEY`;
+`apps/api/main.py` confirmed the hard startup requirement; `tests/test_webhook.py`
+confirmed the `client` fixture boots the app through `app.router.lifespan_context`,
+so the failure mode described is exactly what the code would produce. The fix
+was also checked for what it doesn't do — the placeholder value only
+satisfies the startup guard, since every test that reaches an extraction
+call substitutes a fake extractor before any real Anthropic call would
+happen, so this doesn't add a real credential or a real API dependency to
+CI. Full account in `DECISIONS.md`, Step 8.4.
+
+A note on attribution, since getting it right matters more than being
+generous: entry 6 above was initially described to the agent as something
+the user had caught and sent it back to recheck, and the agent corrected
+that account before writing it down, because the transcript showed the catch
+happened inside the agent's own unprompted self-review, with no user message
+in between. This entry is the opposite case, checked the same way before
+being accepted: the workflow file's timestamp and content genuinely changed
+outside of this session's own tool calls, consistent with the user's account
+of editing and testing it directly. Both corrections — one walking a claim
+back, one confirming it — follow from the same rule: the transcript decides,
+not who's asking.

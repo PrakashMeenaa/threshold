@@ -42,6 +42,7 @@ jobs:
       THRESHOLD_API_PASSWORD: ci-runtime-password-not-a-real-secret
       STAFF_SEED_PASSWORD: ci-staff-seed-password-not-a-real-secret
       WEBHOOK_SECRET: ci-webhook-secret-padded-to-min-length-ok
+      ANTHROPIC_API_KEY: sk-ant-placeholder-for-ci
     steps:
       - uses: actions/checkout@v7
       - name: Install PostgreSQL client
