@@ -8,6 +8,7 @@ from safety_gate import (
     SELF_HARM_CRISIS,
     SEVERE_BLEEDING_TRAUMA,
     STROKE_SYMPTOMS,
+    compose_reply,
     evaluate,
 )
 
@@ -77,3 +78,21 @@ def test_emergency_language_takes_priority_over_medical_advice_language() -> Non
     result = evaluate("I have chest pain, what medicine should I take")
     assert result.category == CHEST_PAIN_CARDIAC
     assert result.reply_text == EMERGENCY_REPLY
+
+
+def test_compose_reply_appends_escalation_rule() -> None:
+    result = compose_reply(EMERGENCY_REPLY, "Call the clinic's after-hours line.")
+    assert result == f"{EMERGENCY_REPLY}\n\nCall the clinic's after-hours line."
+
+
+def test_compose_reply_strips_surrounding_whitespace() -> None:
+    result = compose_reply(EMERGENCY_REPLY, "  Call the clinic's after-hours line.  \n")
+    assert result == f"{EMERGENCY_REPLY}\n\nCall the clinic's after-hours line."
+
+
+@pytest.mark.parametrize("escalation_rule", [None, "", "   ", "\n\t"])
+def test_compose_reply_falls_back_to_base_reply_when_escalation_rule_is_absent(
+    escalation_rule: str | None,
+) -> None:
+    result = compose_reply(EMERGENCY_REPLY, escalation_rule)
+    assert result == EMERGENCY_REPLY

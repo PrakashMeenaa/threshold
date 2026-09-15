@@ -22,6 +22,7 @@ SUNRISE_CONFIG = ClinicRuntimeConfig(
     greeting="Welcome to Sunrise!",
     consent_text="Do you consent? Reply YES or NO.",
     languages=["en", "hi"],
+    escalation_rule="If this is urgent, call your local emergency number.",
 )
 
 

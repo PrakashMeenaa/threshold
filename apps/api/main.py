@@ -29,7 +29,7 @@ from onboarding_agent import (
     load_clinic_configs,
     load_onboarding_state,
 )
-from safety_gate import action_for_category, evaluate
+from safety_gate import action_for_category, compose_reply, evaluate
 
 MAX_BODY_BYTES = 8192
 MIN_SECRET_LENGTH = 32
@@ -244,7 +244,12 @@ async def receive_webhook(
         assert gate_result.category is not None
         assert gate_result.reply_text is not None
         await log_gate_event(ctx.conn, ctx.clinic_id, gate_result.category)
-        return {"reply": gate_result.reply_text}
+        triggered_clinic_config = clinic_configs.get(payload.phone_number_id)
+        escalation_rule = (
+            triggered_clinic_config.escalation_rule if triggered_clinic_config is not None else None
+        )
+        reply_text = compose_reply(gate_result.reply_text, escalation_rule)
+        return {"reply": reply_text}
 
     if slot_extractor is None or appointment_extractor is None:
         raise HTTPException(status_code=500, detail="Internal server error")

@@ -27,7 +27,7 @@ from onboarding_agent import (
     NameExtraction,
     load_clinic_configs,
 )
-from safety_gate import EMERGENCY_REPLY, MEDICAL_ADVICE_REPLY
+from safety_gate import EMERGENCY_REPLY, MEDICAL_ADVICE_REPLY, compose_reply
 
 WEBHOOK_SECRET = "test-webhook-secret-" + "x" * 20
 
@@ -352,7 +352,9 @@ async def test_emergency_message_returns_reply_and_logs_gate_event(
 
         response = await client.post("/webhook", content=body, headers=headers)
         assert response.status_code == 200
-        assert response.json() == {"reply": EMERGENCY_REPLY}
+        clinic_config = load_clinic_configs(main.CLINICS_DIR)["sunrise-main"]
+        expected_reply = compose_reply(EMERGENCY_REPLY, clinic_config.escalation_rule)
+        assert response.json() == {"reply": expected_reply}
 
         after_count = await count_gate_log_rows(conn, "chest_pain_cardiac")
         assert after_count == before_count + 1
@@ -382,7 +384,9 @@ async def test_medical_advice_message_returns_reply_and_logs_gate_event(
 
         response = await client.post("/webhook", content=body, headers=headers)
         assert response.status_code == 200
-        assert response.json() == {"reply": MEDICAL_ADVICE_REPLY}
+        clinic_config = load_clinic_configs(main.CLINICS_DIR)["city-dental-main"]
+        expected_reply = compose_reply(MEDICAL_ADVICE_REPLY, clinic_config.escalation_rule)
+        assert response.json() == {"reply": expected_reply}
 
         after_count = await count_gate_log_rows(conn, "medical_advice_request")
         assert after_count == before_count + 1
@@ -412,7 +416,9 @@ async def test_duplicate_emergency_message_does_not_double_log(
 
         first_response = await client.post("/webhook", content=body, headers=headers)
         assert first_response.status_code == 200
-        assert first_response.json() == {"reply": EMERGENCY_REPLY}
+        clinic_config = load_clinic_configs(main.CLINICS_DIR)["sunrise-main"]
+        expected_reply = compose_reply(EMERGENCY_REPLY, clinic_config.escalation_rule)
+        assert first_response.json() == {"reply": expected_reply}
 
         after_first_count = await count_gate_log_rows(conn, "chest_pain_cardiac")
         assert after_first_count == before_count + 1

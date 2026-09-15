@@ -1,6 +1,6 @@
 # Agent Log Index
 
-Five moments from the raw session transcripts that are worth a reviewer's time
+Six moments from the raw session transcripts that are worth a reviewer's time
 beyond what `DECISIONS.md` already narrates. `DECISIONS.md` is a private
 working document — gitignored by design (see its own Step 0.1), not part of
 this repository — that holds the synthesized account of *what was decided and
@@ -142,3 +142,40 @@ break the canonical one again. The same discipline shows up throughout
 `DECISIONS.md` under different names ("a fix isn't verified until it's been
 run against the case it was meant to survive"); this is the clearest raw
 instance of that discipline actually failing once before holding.
+
+## 6. A self-caught safety regression, on the one path that must never fail closed (post-Phase-9)
+
+**Line ~4580 (the request), ~4712 (the self-catch).** Asked to give
+`clinics/*.yaml`'s long-placeholder `escalation_rule` field real content and
+surface it through `safety_gate.py` when the gate triggers, with an explicit
+request to review the result before calling it done. The first version of
+the `main.py` wiring moved the clinic-config lookup to run *before* the gate
+check, and made it a hard `raise HTTPException(500)` if that lookup came back
+empty. That inverts the one property this module has been audited for
+twice already (entries in `DECISIONS.md`'s Step 3.1 and its post-hoc round):
+a broken or missing clinic YAML — a data problem with nothing to do with
+whether someone is having a real emergency — would have been able to replace
+"call emergency services immediately" with a bare server error, at exactly
+the moment that reply matters most.
+
+Worth reading at line 4712: nothing external prompted the recheck. The
+message opens "Wait — I need to reconsider this. Let me re-check what I just
+did more carefully before moving on," immediately after the first version had
+already been written, and before it had been shown to anyone as finished.
+The catch came from rereading the new diff specifically against the
+property it was supposed to preserve (the gate must always reply, regardless
+of any other system state), not from running the test suite — the bug was an
+architectural one a passing test wouldn't necessarily have caught, since
+nothing in the existing suite exercised "clinic config lookup fails during a
+triggered gate." The fix restored the original ordering exactly: the gate
+evaluates and can reply completely independently of clinic config, and the
+escalation-text lookup happens only inside the already-triggered branch,
+falling back to the safe hardcoded reply if it's missing rather than failing
+the request. Full design writeup in `DECISIONS.md`, Step 3.2.
+
+This is a different shape of "wrong, then caught" than entries 4 and 5: those
+were caught by actually running the changed code and watching it fail;
+this one was caught by re-deriving the safety property the module exists to
+guarantee and checking the new code against it directly — the review step
+that had been explicitly asked for, working as intended on the one part of
+this system where a missed regression would have mattered most.

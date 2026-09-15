@@ -169,6 +169,12 @@ def action_for_category(category: str) -> str:
     return "escalated" if category in EMERGENCY_CATEGORIES else "deflected"
 
 
+def compose_reply(base_reply: str, escalation_rule: str | None) -> str:
+    if escalation_rule is None or not escalation_rule.strip():
+        return base_reply
+    return f"{base_reply}\n\n{escalation_rule.strip()}"
+
+
 def evaluate(text: str) -> GateResult:
     for category in EMERGENCY_CATEGORIES:
         if _matches(category, text):

@@ -87,6 +87,7 @@ class ClinicRuntimeConfig:
     greeting: str
     consent_text: str
     languages: list[str]
+    escalation_rule: str
 
 
 @dataclass
@@ -182,6 +183,7 @@ def load_clinic_configs(clinics_dir: Path) -> dict[str, ClinicRuntimeConfig]:
             greeting=raw["greeting"],
             consent_text=raw["consent_text"],
             languages=raw["languages"],
+            escalation_rule=raw["escalation_rule"],
         )
     return configs
 
