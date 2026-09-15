@@ -11,7 +11,7 @@ This document serves as the single source of truth for execution state. Order is
 - [x] **Phase 5:** Appointment agent
 - [x] **Phase 6:** Clinic dashboard
 - [x] **Phase 7:** Evals + replay harness
-- [ ] **Phase 8:** Docker Compose, CI, README, secret scanning
+- [x] **Phase 8:** Docker Compose, CI, README, secret scanning
 - [ ] **Phase 9:** Writeups + log curation (Ongoing)
 
 ---
@@ -25,7 +25,7 @@ This document serves as the single source of truth for execution state. Order is
 - Migrations for: `clinics`, `departments`, `doctors`, `availability_slots`, `patients`, `appointments`, `consents`, `conversation_state`, `gate_log`, `staff_users`.
 - Strict RLS policies per clinic-scoped table using `current_setting('app.current_clinic_id', true)`.
 - Two-tier database roles: a bootstrap/migration role that owns the schema, and a separate unprivileged runtime role (`NOSUPERUSER`, `NOBYPASSRLS`) that the application actually connects as.
-- Python seed script for Sunrise Multi-Speciality and City Dental Care, sourced from `clinics/*.yaml`.
+    - Python seed script for Sunrise Multi-Speciality and City Dental Care, sourced from `clinics/*.yaml`.
 **Constraints:** No fallback permissive policies. Default-deny on missing session variables. Isolation must be proven by an automated test against the runtime role, not the bootstrap role.
 
 ## Phase 2 — Webhook contract + signature verification
@@ -54,8 +54,9 @@ This document serves as the single source of truth for execution state. Order is
 **Constraints:** Each case's DB setup/teardown is isolated in its own transaction that is always rolled back, so repeated runs never accumulate rows or affect the seeded clinic data. `_run_case` catches any unexpected exception per case (not just expected-vs-actual mismatches) and reports it as a `FAIL`, so one broken case can't take down the report for the other 11 — verified with a deliberately-broken 13th case, then reverted. See `DECISIONS.md` (Step 7.1/7.2) and `docs/architecture.md` for the full design and audit trail.
 
 ## Phase 8 — Docker Compose, CI, README, secret scanning
-**Deliverables:** CI pipeline (tests, tenant-isolation proof, and a `gitleaks` scan on every push); a `docker-compose`-based deploy that a stranger can run from the README alone; finished `README.md`.
-**Acceptance bar:** a fresh clone gets to a working `simulate.sh` conversation in under 15 minutes, timed on a clean checkout.
+**State:** Completed.
+**Deliverables:** `docker-compose.yml` extended with `api`/`dashboard` services (`apps/api/Dockerfile`, `apps/dashboard/Dockerfile`) alongside the existing `db` service, healthcheck-gated startup ordering. `.github/workflows/ci.yml` — three jobs on every push/PR: `gitleaks` (full-history secret scan), `api-tests` (migrate, seed, full pytest suite including the RLS/tenant-isolation proof, offline eval harness), `dashboard-tests` (migrate, seed, `next build`, `vitest`). Finished root `README.md` with a verified quickstart.
+**Acceptance bar:** a fresh clone gets to a working `simulate.sh` conversation in under 15 minutes, timed on a clean checkout. **Measured, not assumed:** a genuine clean-room run (fresh directory, fresh Docker volumes, every local container torn down first, README's own commands run verbatim) completed in 21 seconds end to end, excluding first-time base-image pulls. Two real bugs were caught only by this process, not by review — see `DECISIONS.md` (Step 8.1/8.2/8.3) and `docs/architecture.md` for the full account.
 
 ## Phase 9 — Writeups + log curation (Ongoing)
 **Deliverables:** `docs/architecture.md` and `docs/claude-code-setup.md`, written incrementally as decisions are made rather than reconstructed at the end; `agent-logs/INDEX.md` annotating 3–5 reviewer-relevant moments from the raw session transcripts, including at least one moment where the agent was wrong and it was caught and corrected.

@@ -3,7 +3,7 @@ slug: city-dental-care
 phone_number_id: city-dental-main
 languages:
   - en
-greeting: "PLACEHOLDER: City Dental Care greeting message — to be finalized in Phase 4."
+greeting: "Welcome to City Dental Care! I'm an automated assistant that can help you register and book an appointment. This isn't a medical service — if you're having a dental or medical emergency, please call your local emergency number or go to the nearest hospital right away."
 escalation_rule: "PLACEHOLDER: City Dental Care escalation rule — to be finalized in Phase 3."
 consent_text: "City Dental Care would like to store your name, preferred language, and the department you're interested in so our staff can prepare for your visit and contact you about your appointment. Reply YES to consent and continue, or NO if you'd prefer not to."
 staff_email: staff@city-dental-care.example

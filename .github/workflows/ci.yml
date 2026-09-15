@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  gitleaks:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  api-tests:
+    name: API tests, RLS/tenant-isolation proof, evals
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: threshold_app
+          POSTGRES_PASSWORD: threshold_app
+          POSTGRES_DB: threshold
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U threshold_app -d threshold"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      PGHOST: localhost
+      PGPORT: 5433
+      PGUSER: threshold_app
+      PGPASSWORD: threshold_app
+      PGDATABASE: threshold
+      THRESHOLD_API_PASSWORD: ci-runtime-password-not-a-real-secret
+      STAFF_SEED_PASSWORD: ci-staff-seed-password-not-a-real-secret
+      WEBHOOK_SECRET: ci-webhook-secret-padded-to-min-length-ok
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.1.0
+        with:
+          version: "0.12.13"
+      - name: Install Python dependencies
+        run: uv sync --frozen
+        working-directory: apps/api
+      - name: Run migrations
+        run: ./scripts/migrate.sh
+      - name: Seed clinics
+        run: uv run --project apps/api python scripts/seed.py
+      - name: Run pytest suite (includes RLS/tenant-isolation proof against the runtime role)
+        run: uv run --project apps/api pytest tests/ -q
+      - name: Run offline eval harness (12 golden-conversation cases)
+        run: uv run --project apps/api python evals/run_evals.py
+
+  dashboard-tests:
+    name: Dashboard build, tests, tenant-isolation/IDOR proof
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: threshold_app
+          POSTGRES_PASSWORD: threshold_app
+          POSTGRES_DB: threshold
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U threshold_app -d threshold"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      PGHOST: localhost
+      PGPORT: 5433
+      PGUSER: threshold_app
+      PGPASSWORD: threshold_app
+      PGDATABASE: threshold
+      THRESHOLD_API_PASSWORD: ci-runtime-password-not-a-real-secret
+      STAFF_SEED_PASSWORD: ci-staff-seed-password-not-a-real-secret
+      SESSION_SECRET: ci-session-secret-padded-to-min-length-okok
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.1.0
+        with:
+          version: "0.12.13"
+      - name: Install Python dependencies (needed for scripts/seed.py only)
+        run: uv sync --frozen
+        working-directory: apps/api
+      - name: Run migrations
+        run: ./scripts/migrate.sh
+      - name: Seed clinics
+        run: uv run --project apps/api python scripts/seed.py
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/dashboard/package-lock.json
+      - name: Install Node dependencies
+        run: npm ci
+        working-directory: apps/dashboard
+      - name: Build (also runs the strict TypeScript check next build performs)
+        run: npm run build
+        working-directory: apps/dashboard
+      - name: Run vitest suite (includes IDOR/tenant-isolation proof against a real Postgres connection)
+        run: npm run test
+        working-directory: apps/dashboard
